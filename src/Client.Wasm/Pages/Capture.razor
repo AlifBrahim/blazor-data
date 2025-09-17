@@ -1,0 +1,115 @@
+@page "/"
+@implements IAsyncDisposable
+
+<h1 class="mb-3">Offline Capture</h1>
+
+<div class="d-flex align-items-center gap-3 mb-3">
+    <span class="badge @(_isOnline ? "bg-success" : "bg-secondary")">
+        @(_isOnline ? "Online" : "Offline")
+    </span>
+    <span class="text-muted">Pending: @_pending</span>
+    <button class="btn btn-outline-primary btn-sm" @onclick="SyncOutboxAsync" disabled="@(!_isOnline || _isSyncing)">
+        @if (_isSyncing)
+        {
+            <span class="spinner-border spinner-border-sm me-2" role="status"></span>
+        }
+        <span>Sync now</span>
+    </button>
+</div>
+
+<EntryForm OnSubmit="HandleSubmitAsync" PendingCount="_pending" IsSaving="_isSaving" />
+
+@if (!string.IsNullOrWhiteSpace(_statusMessage))
+{
+    <p class="mt-3 text-muted">@_statusMessage</p>
+}
+
+@code {
+    private bool _isOnline;
+    private bool _isSaving;
+    private bool _isSyncing;
+    private int _pending;
+    private string? _statusMessage;
+
+    [Inject]
+    private SyncService SyncService { get; set; } = default!;
+
+    [Inject]
+    private ConnectivityService Connectivity { get; set; } = default!;
+
+    [Inject]
+    private UserProfileService UserProfile { get; set; } = default!;
+
+    protected override async Task OnInitializedAsync()
+    {
+        Connectivity.OnlineStateChanged += HandleConnectivityChanged;
+        await Connectivity.InitializeAsync();
+        _isOnline = Connectivity.IsOnline;
+        if (_isOnline)
+        {
+            await UserProfile.RefreshAsync();
+        }
+        await RefreshPendingAsync();
+        if (_isOnline)
+        {
+            await SyncOutboxAsync();
+        }
+    }
+
+    private async Task HandleSubmitAsync(ProductEntry entry)
+    {
+        _isSaving = true;
+        await SyncService.EnqueueOrSyncAsync(entry);
+        _statusMessage = Connectivity.IsOnline ? "Entry synced" : "Entry stored offline";
+        _isSaving = false;
+        await RefreshPendingAsync();
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private async Task SyncOutboxAsync()
+    {
+        if (_isSyncing)
+        {
+            return;
+        }
+
+        _isSyncing = true;
+        try
+        {
+            var count = await SyncService.SyncPendingAsync();
+            _statusMessage = count > 0 ? $"Synced {count} entries" : "Nothing to sync";
+            await RefreshPendingAsync();
+        }
+        finally
+        {
+            _isSyncing = false;
+            await InvokeAsync(StateHasChanged);
+        }
+    }
+
+    private async Task RefreshPendingAsync()
+    {
+        _pending = await SyncService.GetPendingCountAsync();
+    }
+
+    private async void HandleConnectivityChanged(bool isOnline)
+    {
+        _isOnline = isOnline;
+        if (isOnline)
+        {
+            await UserProfile.RefreshAsync();
+        }
+        if (isOnline && !_isSyncing)
+        {
+            await SyncOutboxAsync();
+        }
+
+        await InvokeAsync(StateHasChanged);
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        Connectivity.OnlineStateChanged -= HandleConnectivityChanged;
+        await Connectivity.DisposeAsync();
+    }
+}

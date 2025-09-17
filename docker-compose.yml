@@ -1,0 +1,30 @@
+version: "3.9"
+
+services:
+  sql:
+    image: mcr.microsoft.com/mssql/server:2022-latest
+    environment:
+      SA_PASSWORD: "Your_strong!Passw0rd"
+      ACCEPT_EULA: "Y"
+    healthcheck:
+      test: ["CMD-SHELL", "/opt/mssql-tools/bin/sqlcmd -S localhost -U sa -P 'Your_strong!Passw0rd' -Q \"SELECT 1\""]
+      interval: 15s
+      timeout: 10s
+      start_period: 30s
+      retries: 10
+    ports:
+      - "1433:1433"
+
+  app:
+    build:
+      context: .
+      dockerfile: src/Server/Dockerfile
+    depends_on:
+      sql:
+        condition: service_healthy
+    environment:
+      ConnectionStrings__Default: "Server=sql;Database=CaptureDb;User Id=sa;Password=Your_strong!Passw0rd;TrustServerCertificate=True"
+      ASPNETCORE_ENVIRONMENT: "Development"
+      ASPNETCORE_URLS: "http://+:8080"
+    ports:
+      - "8080:8080"

@@ -1,0 +1,96 @@
+@page "/"
+@attribute [Authorize(Roles = "Admin,DataCollector")]
+
+<PageTitle>Capture Entries</PageTitle>
+
+<h1 class="mb-4">Capture Entries</h1>
+
+<EntryForm OnSubmit="HandleSubmitAsync" PendingCount="_pending" IsSaving="_isSaving" />
+
+@if (_alert is not null)
+{
+    <div class="alert @(_alert.Value.Type) mt-3" role="alert">
+        @_alert.Value.Message
+    </div>
+}
+
+<section class="mt-4">
+    <h2 class="h4">Recent Entries</h2>
+    @if (_entries.Count == 0)
+    {
+        <p class="text-muted">No entries captured yet.</p>
+    }
+    else
+    {
+        <div class="table-responsive">
+            <table class="table table-sm align-middle">
+                <thead>
+                <tr>
+                    <th>Captured At (UTC)</th>
+                    <th>Name</th>
+                    <th>Model</th>
+                    <th>Part Number</th>
+                    <th class="text-end">Qty</th>
+                    <th class="text-end">Price</th>
+                </tr>
+                </thead>
+                <tbody>
+                @foreach (var entry in _entries)
+                {
+                    <tr>
+                        <td>@entry.CapturedAt.ToString("u")</td>
+                        <td>@entry.Name</td>
+                        <td>@entry.ProductModel</td>
+                        <td>@entry.PartNumber</td>
+                        <td class="text-end">@entry.Quantity</td>
+                        <td class="text-end">@entry.Price.ToString("C")</td>
+                    </tr>
+                }
+                </tbody>
+            </table>
+        </div>
+    }
+</section>
+
+@code {
+    private readonly List<ProductEntry> _entries = new();
+    private bool _isSaving;
+    private int _pending;
+    private (string Message, string Type)? _alert;
+
+    [Inject]
+    private ProductEntryService EntryService { get; set; } = default!;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadEntriesAsync();
+    }
+
+    private async Task HandleSubmitAsync(ProductEntry entry)
+    {
+        try
+        {
+            _isSaving = true;
+            entry.CapturedAt = entry.CapturedAt == default ? DateTimeOffset.UtcNow : entry.CapturedAt;
+            await EntryService.SaveAsync(entry);
+            _alert = ("Entry captured successfully.", "alert-success");
+        }
+        catch (Exception ex)
+        {
+            _alert = ($"Failed to capture entry: {ex.Message}", "alert-danger");
+        }
+        finally
+        {
+            _isSaving = false;
+            await LoadEntriesAsync();
+            await InvokeAsync(StateHasChanged);
+        }
+    }
+
+    private async Task LoadEntriesAsync()
+    {
+        _entries.Clear();
+        var latest = await EntryService.GetLatestAsync();
+        _entries.AddRange(latest);
+    }
+}

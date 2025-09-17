@@ -1,0 +1,111 @@
+@using Domain
+
+<EditForm Model="_entry" OnValidSubmit="HandleSubmitAsync">
+    <DataAnnotationsValidator />
+    <div class="row g-3">
+        <div class="col-md-6">
+            <label class="form-label" for="name">Name</label>
+            <InputText id="name" class="form-control" @bind-Value="_entry.Name" />
+        </div>
+        <div class="col-md-6">
+            <label class="form-label" for="captured">Captured At (UTC)</label>
+            <input id="captured"
+                   class="form-control"
+                   value="@_entry.CapturedAt.ToString("u")"
+                   readonly />
+        </div>
+        <div class="col-md-6">
+            <label class="form-label" for="model">Product Model</label>
+            <InputText id="model" class="form-control" @bind-Value="_entry.ProductModel" />
+        </div>
+        <div class="col-md-6">
+            <label class="form-label" for="partNumber">Part Number</label>
+            <input id="partNumber"
+                   class="form-control"
+                   @bind="_entry.PartNumber"
+                   @bind:event="oninput"
+                   @ref="_partNumber" />
+        </div>
+        <div class="col-md-6">
+            <label class="form-label" for="quantity">Quantity</label>
+            <InputNumber id="quantity" class="form-control" @bind-Value="_entry.Quantity" />
+        </div>
+        <div class="col-md-6">
+            <label class="form-label" for="price">Price</label>
+            <InputNumber id="price" class="form-control" @bind-Value="_entry.Price" />
+        </div>
+    </div>
+    <div class="mt-3 d-flex gap-3 align-items-center">
+        <button class="btn btn-primary" type="submit" disabled="@IsSaving">
+            @if (IsSaving)
+            {
+                <span class="spinner-border spinner-border-sm me-2" role="status" aria-hidden="true"></span>
+            }
+            <span>@(IsSaving ? "Saving..." : "Add Entry")</span>
+        </button>
+        @if (PendingCount > 0)
+        {
+            <span class="badge bg-warning text-dark">Pending sync: @PendingCount</span>
+        }
+    </div>
+</EditForm>
+
+@code {
+    private readonly ProductEntry _entry = new();
+    private ElementReference _partNumber;
+
+    [Parameter]
+    public EventCallback<ProductEntry> OnSubmit { get; set; }
+
+    [Parameter]
+    public int PendingCount { get; set; }
+
+    [Parameter]
+    public bool IsSaving { get; set; }
+
+    private async Task HandleSubmitAsync()
+    {
+        if (OnSubmit.HasDelegate)
+        {
+            await OnSubmit.InvokeAsync(CloneEntry(_entry));
+        }
+
+        ResetForNextEntry();
+        await _partNumber.FocusAsync();
+    }
+
+    protected override void OnInitialized()
+    {
+        ResetForNextEntry();
+    }
+
+    private static ProductEntry CloneEntry(ProductEntry source)
+    {
+        return new ProductEntry
+        {
+            Id = source.Id,
+            Name = source.Name,
+            CapturedAt = source.CapturedAt,
+            ProductModel = source.ProductModel,
+            PartNumber = source.PartNumber,
+            Quantity = source.Quantity,
+            Price = source.Price,
+            DeviceId = source.DeviceId,
+            UserId = source.UserId
+        };
+    }
+
+    private void ResetForNextEntry()
+    {
+        var preserveName = _entry.Name;
+        var preserveModel = _entry.ProductModel;
+
+        _entry.Id = Guid.NewGuid();
+        _entry.CapturedAt = DateTimeOffset.UtcNow;
+        _entry.PartNumber = string.Empty;
+        _entry.Quantity = 1;
+        _entry.Price = 0;
+        _entry.Name = preserveName;
+        _entry.ProductModel = preserveModel;
+    }
+}
